@@ -1,6 +1,11 @@
 import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
 import * as esprima from 'esprima';
+import { getLexicalEnviroment } from './helpers/getters/lexical-enviroment.getter';
+import { FunctionDeclaration } from './interfaces/base-node.interface';
+import { ProgramBlockInterface } from './interfaces/program-block.interface';
+import { ProgramBlockEnum } from './interfaces/program-block.type';
+import { VariableDeclarationInterface } from './interfaces/variable-declaration.interface';
 
 @Component({
   selector: 'app-root',
@@ -12,7 +17,7 @@ export class AppComponent implements OnInit {
   codeForm = this.fb.group({
     userInput: '',
   });
-  parsedSript: esprima.Program | undefined;
+  parsedSript!: { body: ProgramBlockInterface[] };
   currentStepIdx = 0;
   currentStepData: codeBlockInterface | undefined;
 
@@ -53,9 +58,27 @@ export class AppComponent implements OnInit {
         expression: bodyBlock?.expression,
       };
       this.arrayedScript.push(newProgramBlock);
+      if (
+        (bodyBlock as ProgramBlockInterface).type ===
+        ProgramBlockEnum.FunctionDeclaration
+      ) {
+        console.log('bodyBlock: ', bodyBlock);
+        console.log(
+          'bodyBlock.body: ',
+          (bodyBlock as FunctionDeclaration).body.body
+        );
+        console.log(
+          `${bodyBlock.id.name} LE: `,
+          getLexicalEnviroment((bodyBlock as FunctionDeclaration).body.body)
+        );
+      }
     });
 
     console.log('this.arrayedScript: ', this.arrayedScript);
+    console.log(
+      'global LE: ',
+      getLexicalEnviroment(this.parsedSript.body as ProgramBlockInterface[])
+    );
   }
 
   isActiveLine(lineNum: unknown) {
