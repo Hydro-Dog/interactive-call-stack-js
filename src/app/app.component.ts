@@ -1,10 +1,15 @@
+import { CompileShallowModuleMetadata } from '@angular/compiler';
 import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
 import * as esprima from 'esprima';
-import { getLexicalEnviroment } from './helpers/getters/lexical-enviroment.getter';
+import * as estree from 'estree';
+import { getFuncDeclarationsFromBody } from './helpers/getters/program-body-destructer';
 import { FunctionDeclaration } from './interfaces/base-node.interface';
 import { ProgramBlockInterface } from './interfaces/program-block.interface';
-import { ProgramBlockEnum } from './interfaces/program-block.type';
+import {
+  ProgramBlockEnum,
+  ProgramBlock,
+} from './interfaces/program-block.type';
 import { VariableDeclarationInterface } from './interfaces/variable-declaration.interface';
 
 @Component({
@@ -17,7 +22,7 @@ export class AppComponent implements OnInit {
   codeForm = this.fb.group({
     userInput: '',
   });
-  parsedSript!: { body: ProgramBlockInterface[] };
+  parsedSript!: estree.Program;
   currentStepIdx = 0;
   currentStepData: codeBlockInterface | undefined;
 
@@ -49,36 +54,11 @@ export class AppComponent implements OnInit {
       loc: true,
     });
 
-    this.parsedSript.body.forEach((bodyBlock: any, i: number) => {
-      const newProgramBlock = {
-        loc: bodyBlock.loc,
-        type: bodyBlock.type,
-        body: bodyBlock?.body,
-        params: bodyBlock?.params,
-        expression: bodyBlock?.expression,
-      };
-      this.arrayedScript.push(newProgramBlock);
-      if (
-        (bodyBlock as ProgramBlockInterface).type ===
-        ProgramBlockEnum.FunctionDeclaration
-      ) {
-        console.log('bodyBlock: ', bodyBlock);
-        console.log(
-          'bodyBlock.body: ',
-          (bodyBlock as FunctionDeclaration).body.body
-        );
-        console.log(
-          `${bodyBlock.id.name} LE: `,
-          getLexicalEnviroment((bodyBlock as FunctionDeclaration).body.body)
-        );
-      }
-    });
-
-    console.log('this.arrayedScript: ', this.arrayedScript);
-    console.log(
-      'global LE: ',
-      getLexicalEnviroment(this.parsedSript.body as ProgramBlockInterface[])
-    );
+    const arr = getFuncDeclarationsFromBody(this.parsedSript.body, 'array');
+    const map = getFuncDeclarationsFromBody(this.parsedSript.body, 'map');
+    console.log('arr: ', arr);
+    console.log('map: ', map);
+    console.log('this.parsedSript: ', this.parsedSript);
   }
 
   isActiveLine(lineNum: unknown) {
