@@ -9,7 +9,7 @@ import * as estree from 'estree';
 
 export const getFuncDeclarationsFromBody = (
   body: ProgramBlock[],
-  returnType: 'array' | 'map'
+  returnType: 'array' | 'map' = 'array'
 ) => {
   const resArr: { name: string; block: ProgramBlock }[] = [];
 
@@ -60,3 +60,5 @@ const getFunCallsFromBody = (
   body: ProgramBlock[],
   returnType: 'array' | 'map'
 ) => {};
+
+const composeLexicalEnviroment = () => {};

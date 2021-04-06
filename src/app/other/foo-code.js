@@ -16,6 +16,8 @@ function boo() {
   foo(f);
 }
 
+var cc = 330;
+
 const doo = function (val) {
   const g = 70;
   let h = 80;

@@ -23,5 +23,7 @@
 <button (click)="goPrevBlock()">Go Prev</button>
 
 <div>
-  {{ currentStepData | json }}
+  <div *ngFor="let execContext of callStack$ | async">
+    {{ execContext }}
+  </div>
 </div>
