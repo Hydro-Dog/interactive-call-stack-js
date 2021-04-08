@@ -1,14 +1,17 @@
 import { CompileShallowModuleMetadata } from '@angular/compiler';
 import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
+import { cloneDeep } from 'lodash';
 import * as esprima from 'esprima';
 import * as estree from 'estree';
+import { BehaviorSubject, Observable, ReplaySubject } from 'rxjs';
 import { getFuncDeclarationsFromBody } from './helpers/getters/program-body-destructer';
 import { FunctionDeclaration } from './interfaces/base-node.interface';
 import { ProgramBlockInterface } from './interfaces/program-block.interface';
 import {
   ProgramBlockEnum,
   ProgramBlock,
+  lexEnvEmpty,
 } from './interfaces/program-block.type';
 import { VariableDeclarationInterface } from './interfaces/variable-declaration.interface';
 import { ExecutionContextService } from './services/execution-context.service';
@@ -26,34 +29,32 @@ export class AppComponent implements OnInit {
   parsedSript!: estree.Program;
   currentStepIdx = 0;
 
-  lexicalEnviromentsArr: any[] = [];
-  lexicalEnviromentsMap = new Map();
-  // currentStepData: codeBlockInterface | undefined;
-
   activeLineNum!: number[];
   numberOfLines!: number[];
 
   private userInput = this.codeForm.get('userInput');
 
-  callStack$: any;
-  currentLexicalEnviroment$: any;
-  currentProgramBlock!: LexicalEnviromentEntity[];
+  callStackHist$: any;
+  currentProgramBlock!: LexEnvEntity[];
+  lexEnvHist$: Observable<Array<LexEnvEntity[]>>;
+  currentLexEnvFin$: Observable<LexEnvEntity[]>;
 
   constructor(
     private fb: FormBuilder,
     private executionContextService: ExecutionContextService
   ) {
-    this.callStack$ = this.executionContextService.callStack$;
-    this.currentLexicalEnviroment$ = this.executionContextService.currentLexicalEnviroment$;
+    this.callStackHist$ = this.executionContextService.callStackHist$;
+    this.lexEnvHist$ = this.executionContextService.lexEnvHist$;
+    this.currentLexEnvFin$ = this.executionContextService.currentLexEnvFin$;
   }
 
   ngOnInit() {
-    this.numberOfLines = Array.from({ length: 30 }, (item, i) => i + 1);
-    this.activeLineNum = [2, 3, 4];
-
-    this.executionContextService.currentLexicalEnviroment$.subscribe((x) =>
-      console.log('x: ', x)
-    );
+    // this.numberOfLines = Array.from({ length: 30 }, (item, i) => i + 1);
+    // this.activeLineNum = [2, 3, 4];
+    // this.lexEnvHist$.subscribe((x: any) => {
+    //   this.currentLexEnvFin$ = x;
+    //   console.log('this.currentLexEnvFin: ', this.currentLexEnvFin$);
+    // });
   }
 
   onSubmit() {
@@ -62,17 +63,17 @@ export class AppComponent implements OnInit {
       loc: true,
     });
 
-    const globalLE = this.composeLexicalEnviroment(this.parsedSript.body);
+    const globalLexEnvFin = this.composeLexicalEnviroment(
+      this.parsedSript.body
+    );
 
-    const firstPhase = this.getFitstPhaseLexicalEnviroment(globalLE);
+    this.executionContextService.setCurrentLexEnvFin(globalLexEnvFin);
 
-    this.executionContextService.setCurrentLexicalEnviroment(firstPhase);
+    const globalLexEnvFirstPhase = this.getFitstPhaseLexicalEnviroment(
+      globalLexEnvFin
+    );
 
-    console.log('this.parsedSript: ', this.parsedSript);
-
-    console.log('globalLE: ', globalLE);
-    this.currentProgramBlock = [...globalLE];
-    console.log('this.currentProgramBlock: ', this.currentProgramBlock);
+    this.executionContextService.setCurrentLexEnvHist([globalLexEnvFirstPhase]);
   }
 
   isActiveLine(lineNum: unknown) {
@@ -80,32 +81,64 @@ export class AppComponent implements OnInit {
   }
 
   goNextBlock() {
-    console.log('curr step: ', this.currentProgramBlock[this.currentStepIdx++]);
+    const lexEnvHist = this.executionContextService.getCurrentLexEnvHist();
+    const currentLexEnv = lexEnvHist[lexEnvHist.length - 1];
+    const currentLexEnvFin = this.executionContextService.getCurrentLexEnvFin();
+
+    const newLexEnv = currentLexEnv.map((codeBlock) => {
+      if (
+        codeBlock.name === currentLexEnvFin[this.currentStepIdx].name &&
+        codeBlock.type === currentLexEnvFin[this.currentStepIdx].type
+      ) {
+        codeBlock = cloneDeep(currentLexEnvFin[this.currentStepIdx]);
+      }
+
+      return codeBlock;
+    });
+
+    this.currentStepIdx++;
+    this.executionContextService.setCurrentLexEnvHist([
+      ...lexEnvHist,
+      newLexEnv,
+    ]);
+
+    console.log('hist: ', this.executionContextService.getCurrentLexEnvHist());
   }
 
   goPrevBlock() {}
 
-  getFitstPhaseLexicalEnviroment(
-    lexicalEnviromentEntityArray: LexicalEnviromentEntity[]
-  ) {
-    const hoistedValues = lexicalEnviromentEntityArray.filter((bodyBlock) => {
-      return (
-        bodyBlock.type === ProgramBlockEnum.FunctionDeclaration ||
-        bodyBlock.kind === 'var'
-      );
-    });
+  getFitstPhaseLexicalEnviroment(lexicalEnviromentEntityArray: LexEnvEntity[]) {
+    const hoistedValues = cloneDeep(lexicalEnviromentEntityArray).filter(
+      (bodyBlock) => {
+        return (
+          bodyBlock.type === ProgramBlockEnum.FunctionDeclaration ||
+          bodyBlock.type === ProgramBlockEnum.ExpressionStatement ||
+          bodyBlock.kind === 'var' ||
+          bodyBlock.kind === 'let' ||
+          bodyBlock.kind === 'const'
+        );
+      }
+    );
 
     return hoistedValues.map((bodyBlock) => {
       if (bodyBlock.kind === 'var') {
-        bodyBlock.value = undefined;
+        bodyBlock.value = 'undefined';
+      } else if (bodyBlock.kind === 'let' || bodyBlock.kind === 'const') {
+        bodyBlock.value = 'uninitialized';
+      }
+      if (bodyBlock.type === ProgramBlockEnum.ExpressionStatement) {
+        bodyBlock.lexEnv = lexEnvEmpty;
+        bodyBlock.scope = cloneDeep(
+          this.executionContextService.getCurrentLexEnvFin()
+        );
       }
 
       return bodyBlock;
     });
   }
 
-  composeLexicalEnviroment(body: ProgramBlock[]): LexicalEnviromentEntity[] {
-    const lexicalEnvArr: LexicalEnviromentEntity[] = [];
+  composeLexicalEnviroment(body: ProgramBlock[]): LexEnvEntity[] {
+    const lexicalEnvArr: LexEnvEntity[] = [];
 
     body.forEach((bodyBlock: ProgramBlock, i: number, arr: ProgramBlock[]) => {
       if (bodyBlock.type === ProgramBlockEnum.VariableDeclaration) {
@@ -147,18 +180,16 @@ export class AppComponent implements OnInit {
   }
 }
 
-interface LexicalEnviromentEntity {
+export interface LexEnvEntity {
   name: string | undefined;
-  type: 'ExpressionStatement' | 'FunctionDeclaration' | 'VariableDeclarator';
-  kind: 'var' | 'let' | 'const' | null;
-  value: string | number | bigint | true | RegExp | null | undefined;
-  loc: estree.SourceLocation | null | undefined;
+  type:
+    | 'ExpressionStatement'
+    | 'FunctionDeclaration'
+    | 'VariableDeclarator'
+    | 'empty';
+  kind: 'var' | 'let' | 'const' | 'empty' | null;
+  value: string | number | bigint | true | RegExp | null | undefined | 'empty';
+  loc: estree.SourceLocation | null | undefined | 'empty';
+  lexEnv?: LexEnvEntity;
+  scope?: LexEnvEntity[];
 }
-
-// interface codeBlockInterface {
-//   loc: any;
-//   type: string;
-//   body: any;
-//   params?: any;
-//   expression?: any;
-// }

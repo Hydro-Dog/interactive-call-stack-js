@@ -1,6 +1,3 @@
-import { BoundDirectivePropertyAst } from '@angular/compiler';
-import { IdentefierInterface } from 'src/app/interfaces/identefier.interface';
-import { ProgramBlockInterface } from 'src/app/interfaces/program-block.interface';
 import {
   ProgramBlockEnum,
   ProgramBlock,
@@ -55,10 +52,3 @@ export const getFuncDeclarationsFromBody = (
 
   return returnType === 'array' ? resArr : resMap;
 };
-
-const getFunCallsFromBody = (
-  body: ProgramBlock[],
-  returnType: 'array' | 'map'
-) => {};
-
-const composeLexicalEnviroment = () => {};
