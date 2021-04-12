@@ -74,6 +74,12 @@ export class AppComponent implements OnInit {
     );
 
     this.executionContextService.setCurrentLexEnvHist([globalLexEnvFirstPhase]);
+
+    const lexEnvHist = this.executionContextService.getCurrentLexEnvHist();
+    const currentLexEnv = lexEnvHist[lexEnvHist.length - 1];
+    this.currentStepIdx = currentLexEnv.filter(
+      (codeBlock) => codeBlock.type === ProgramBlockEnum.FunctionDeclaration
+    ).length;
   }
 
   isActiveLine(lineNum: unknown) {
@@ -85,16 +91,36 @@ export class AppComponent implements OnInit {
     const currentLexEnv = lexEnvHist[lexEnvHist.length - 1];
     const currentLexEnvFin = this.executionContextService.getCurrentLexEnvFin();
 
-    const newLexEnv = currentLexEnv.map((codeBlock) => {
-      if (
-        codeBlock.name === currentLexEnvFin[this.currentStepIdx].name &&
-        codeBlock.type === currentLexEnvFin[this.currentStepIdx].type
-      ) {
-        codeBlock = cloneDeep(currentLexEnvFin[this.currentStepIdx]);
-      }
+    const newLexEnv = cloneDeep(currentLexEnv);
 
-      return codeBlock;
-    });
+    // for (let i = startIdx; i < currentLexEnv.length; i++) {
+    const currItem = currentLexEnvFin.find(
+      (codeBlock) =>
+        codeBlock.name === currentLexEnv[this.currentStepIdx].name &&
+        codeBlock.type === currentLexEnv[this.currentStepIdx].type
+    );
+
+    newLexEnv[this.currentStepIdx] = cloneDeep(currItem)!;
+    // currentLexEnvFin.forEach((codeBlock) => {
+    //   if (
+    //     codeBlock.name === currentLexEnv[this.currentStepIdx].name &&
+    //     codeBlock.type === currentLexEnv[this.currentStepIdx].type
+    //   ) {
+    //     newLexEnv[this.currentStepIdx] = cloneDeep(codeBlock);
+    //   }
+    // });
+    // }
+
+    // const newLexEnv = currentLexEnv.map((codeBlock) => {
+    //   if (
+    //     codeBlock.name === currentLexEnvFin[this.currentStepIdx].name &&
+    //     codeBlock.type === currentLexEnvFin[this.currentStepIdx].type
+    //   ) {
+    //     codeBlock = cloneDeep(currentLexEnvFin[this.currentStepIdx]);
+    //   }
+
+    //   return codeBlock;
+    // });
 
     this.currentStepIdx++;
     this.executionContextService.setCurrentLexEnvHist([
@@ -120,7 +146,7 @@ export class AppComponent implements OnInit {
       }
     );
 
-    return hoistedValues.map((bodyBlock) => {
+    const hoistedVariables = hoistedValues.map((bodyBlock) => {
       if (bodyBlock.kind === 'var') {
         bodyBlock.value = 'undefined';
       } else if (bodyBlock.kind === 'let' || bodyBlock.kind === 'const') {
@@ -135,6 +161,15 @@ export class AppComponent implements OnInit {
 
       return bodyBlock;
     });
+
+    const FDs = hoistedVariables.filter(
+      (codeBlock) => codeBlock.type === ProgramBlockEnum.FunctionDeclaration
+    );
+    const vars = hoistedVariables.filter(
+      (codeBlock) => codeBlock.type !== ProgramBlockEnum.FunctionDeclaration
+    );
+
+    return FDs.concat(vars);
   }
 
   composeLexicalEnviroment(body: ProgramBlock[]): LexEnvEntity[] {
