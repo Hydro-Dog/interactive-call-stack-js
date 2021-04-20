@@ -1,19 +1,18 @@
-import { CompileShallowModuleMetadata } from '@angular/compiler';
+import {
+  CompileShallowModuleMetadata,
+  ExpressionStatement,
+} from '@angular/compiler';
 import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
 import { cloneDeep } from 'lodash';
 import * as esprima from 'esprima';
 import * as estree from 'estree';
-import { BehaviorSubject, Observable, ReplaySubject } from 'rxjs';
-import { getFuncDeclarationsFromBody } from './helpers/getters/program-body-destructer';
-import { FunctionDeclaration } from './interfaces/base-node.interface';
-import { ProgramBlockInterface } from './interfaces/program-block.interface';
+import { Observable } from 'rxjs';
 import {
   ProgramBlockEnum,
   ProgramBlock,
   lexEnvEmpty,
 } from './interfaces/program-block.type';
-import { VariableDeclarationInterface } from './interfaces/variable-declaration.interface';
 import { ExecutionContextService } from './services/execution-context.service';
 
 @Component({
@@ -58,7 +57,7 @@ export class AppComponent implements OnInit {
     // });
   }
 
-  getLexEnvSteps(code: string) {
+  getLexEnvHist(code: string, name: string, parent: string) {
     const parsedSript = esprima.parseScript(code, {
       tolerant: true,
       loc: true,
@@ -71,22 +70,22 @@ export class AppComponent implements OnInit {
       currentLexEnvFin
     );
 
+    console.log('currentLexEnvFirstPhase: ', currentLexEnvFirstPhase);
+
     this.executionContextService.setCurrentLexEnvHist([
       currentLexEnvFirstPhase,
     ]);
 
     let lexEnvHist = this.executionContextService.getCurrentLexEnvHist();
     const currentLexEnv = lexEnvHist[lexEnvHist.length - 1];
-    this.currentStepIdx = currentLexEnv.filter(
-      (codeBlock) => codeBlock.type === ProgramBlockEnum.FunctionDeclaration
-    ).length;
 
-    //iterate over lex env
+    // step over all FDs and set step index
+    this.currentStepIdx = this.findStartIdx(currentLexEnv);
 
-    while (this.currentStepIdx < currentLexEnv.length) {
+    //iterate over lex env with generated index
+
+    while (this.currentStepIdx < currentLexEnv.length - 1) {
       lexEnvHist = this.executionContextService.getCurrentLexEnvHist();
-      console.log('lexEnvHist2: ', lexEnvHist);
-      console.log('this.currentStepIdx: ', this.currentStepIdx);
       const newLexEnv = cloneDeep(lexEnvHist[lexEnvHist.length - 1]);
       const currItem = currentLexEnvFin.find(
         (codeBlock) =>
@@ -94,51 +93,80 @@ export class AppComponent implements OnInit {
           codeBlock.type === currentLexEnv[this.currentStepIdx].type
       );
 
-      console.log('currItem: ', currItem);
-
       newLexEnv[this.currentStepIdx] = cloneDeep(currItem)!;
       this.currentStepIdx++;
-      console.log('<', this.currentStepIdx < currentLexEnv.length);
       this.executionContextService.setCurrentLexEnvHist([
         ...lexEnvHist,
         newLexEnv,
       ]);
-      console.log('hmm: ', this.executionContextService.getCurrentLexEnvHist());
     }
 
+    this.executionContextService.currentLexEnvName = name;
+
     console.log('hist: ', this.executionContextService.getCurrentLexEnvHist());
+
+    const exprStatementsArr = [];
+    const fdArr = new Map();
+    exprStatementsArr.push(
+      ...this.findAllExpressionStatements(currentLexEnvFin)
+    );
+
+    exprStatementsArr.forEach((exprStatement) => {
+      // console.log('exprStatement: ', exprStatement);
+      const funcDecl = currentLexEnv.find((lexEnvBlock) => {
+        return (
+          lexEnvBlock.name === exprStatement.name &&
+          (lexEnvBlock.type === ProgramBlockEnum.FunctionDeclaration ||
+            lexEnvBlock.type === ProgramBlockEnum.VariableDeclarator)
+        );
+      });
+      console.log('funcDecl: ', funcDecl);
+      const start = (funcDecl?.loc as estree.SourceLocation).start.line;
+      const end = (funcDecl?.loc as estree.SourceLocation).end.line;
+      fdArr.set(funcDecl!.name, { start, end });
+    });
+
+    this.executionContextService.currNestedLexEnvObj.set(name, {
+      hist: this.executionContextService.getCurrentLexEnvHist(),
+      idx: this.findStartIdx(currentLexEnv),
+      parent,
+      funcDeclarationsArr: fdArr,
+    });
+  }
+
+  findStartIdx(lexEnv: LexEnvEntity[]) {
+    return (
+      lexEnv.filter(
+        (codeBlock) => codeBlock.type === ProgramBlockEnum.FunctionDeclaration
+      ).length - 1
+    );
   }
 
   getCodeByLines(start: number, end: number, code: string) {
     const codeArr = code.split('\n');
-    return codeArr.splice(start, end - start - 1);
+    return codeArr.splice(start, end - start - 1).join('\n');
+  }
+
+  findAllExpressionStatements(code: LexEnvEntity[]) {
+    return code.filter(
+      (codeBlock) => codeBlock.type === ProgramBlockEnum.ExpressionStatement
+    );
+  }
+
+  getParsedScript(code: string): esprima.Program {
+    return esprima.parseScript(code, {
+      tolerant: true,
+      loc: true,
+    });
   }
 
   onSubmit() {
     this.programmString = this.userInput?.value;
     console.log('res: ', this.getCodeByLines(12, 17, this.programmString));
-    // this.parsedSript = esprima.parseScript(this.userInput?.value, {
-    //   tolerant: true,
-    //   loc: true,
-    // });
-
-    // const globalLexEnvFin = this.composeLexicalEnviroment(
-    //   this.parsedSript.body
-    // );
-
-    // this.executionContextService.setCurrentLexEnvFin(globalLexEnvFin);
-
-    // const globalLexEnvFirstPhase = this.getFitstPhaseLexicalEnviroment(
-    //   globalLexEnvFin
-    // );
-
-    // this.executionContextService.setCurrentLexEnvHist([globalLexEnvFirstPhase]);
-
-    // const lexEnvHist = this.executionContextService.getCurrentLexEnvHist();
-    // const currentLexEnv = lexEnvHist[lexEnvHist.length - 1];
-    // this.currentStepIdx = currentLexEnv.filter(
-    //   (codeBlock) => codeBlock.type === ProgramBlockEnum.FunctionDeclaration
-    // ).length;
+    this.getLexEnvHist(this.programmString, 'global', 'null');
+    this.currentStepIdx = this.findStartIdx(
+      this.executionContextService.getCurrentLexEnvFin()
+    );
   }
 
   isActiveLine(lineNum: unknown) {
@@ -146,24 +174,60 @@ export class AppComponent implements OnInit {
   }
 
   goNextBlock() {
-    const lexEnvHist = this.executionContextService.getCurrentLexEnvHist();
-    const currentLexEnv = lexEnvHist[lexEnvHist.length - 1];
-    const currentLexEnvFin = this.executionContextService.getCurrentLexEnvFin();
-    const newLexEnv = cloneDeep(currentLexEnv);
-    const currItem = currentLexEnvFin.find(
-      (codeBlock) =>
-        codeBlock.name === currentLexEnv[this.currentStepIdx].name &&
-        codeBlock.type === currentLexEnv[this.currentStepIdx].type
+    const currLexEnv = this.executionContextService.currNestedLexEnvObj.get(
+      this.executionContextService.currentLexEnvName
     );
+    console.log('currLexEnv: ', currLexEnv);
+    console.log('currLexEnv hist: ', currLexEnv?.hist[currLexEnv.idx]);
+    console.log(
+      'curr step: ',
+      currLexEnv?.hist[currLexEnv.idx][currLexEnv.idx]
+    );
+    if (
+      currLexEnv?.hist[currLexEnv.idx][currLexEnv.idx].type ===
+      ProgramBlockEnum.ExpressionStatement
+    ) {
+      // this.exprStatementsArr.forEach((exprStatement) => {
+      //   // console.log('exprStatement: ', exprStatement);
+      //   const funcDecl = currentLexEnv.find((lexEnvBlock) => {
+      //     return (
+      //       lexEnvBlock.name === exprStatement.name &&
+      //       (lexEnvBlock.type === ProgramBlockEnum.FunctionDeclaration ||
+      //         lexEnvBlock.type === ProgramBlockEnum.VariableDeclarator)
+      //     );
+      //   });
+      //   console.log('funcDecl: ', funcDecl);
+      //   const start = (funcDecl?.loc as estree.SourceLocation).start.line;
+      //   const end = (funcDecl?.loc as estree.SourceLocation).end.line;
+      //   const code = this.getCodeByLines(start, end, this.programmString);
+      //   if (code) {
+      //     this.getLexEnvHist(code, 'foo');
+      //     console.log('aza: ', this.getLexEnvHist(code, 'foo'));
+      //   } else {
+      //     console.error('code is empty');
+      //   }
+      // });
+      // exprStatementsArr.forEach((exprStatement) => {
+      //     const funcDecl = currentLexEnv.find((lexEnvBlock) => {
+      //       return (
+      //         lexEnvBlock.name === exprStatement.name &&
+      //         lexEnvBlock.type === ProgramBlockEnum.FunctionDeclaration
+      //       );
+      //     });
+      //     console.log('funcDecl: ', funcDecl);
+      //     const start = (funcDecl?.loc as estree.SourceLocation).start.line;
+      //     const end = (funcDecl?.loc as estree.SourceLocation).end.line;
+      //     const code = this.getCodeByLines(start, end, this.programmString);
+      //     if (code) {
+      //       this.getLexEnvHist(code);
+      //       console.log('aza: ', this.getLexEnvHist(code));
+      //     } else {
+      //       console.error('code is empty');
+      //     }
+      // });Z
+    }
 
-    newLexEnv[this.currentStepIdx] = cloneDeep(currItem)!;
-    this.currentStepIdx++;
-    this.executionContextService.setCurrentLexEnvHist([
-      ...lexEnvHist,
-      newLexEnv,
-    ]);
-
-    console.log('hist: ', this.executionContextService.getCurrentLexEnvHist());
+    currLexEnv!.idx++;
   }
 
   goPrevBlock() {}
@@ -251,6 +315,7 @@ export class AppComponent implements OnInit {
 }
 
 export interface LexEnvEntity {
+  lexEnvCompleted?: boolean;
   name: string | undefined;
   type:
     | 'ExpressionStatement'

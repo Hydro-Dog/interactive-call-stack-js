@@ -3,8 +3,10 @@ const b = 20;
 var c = 30;
 
 function foo(alpha) {
+  const fooval = 2002;
   function fooNested() {
     let aNested = 1000;
+    let bNested = 1000;
   }
   console.log("foo");
 }
@@ -18,6 +20,8 @@ function boo() {
 
 var cc = 330;
 
+boo();
+
 const doo = function (val) {
   const g = 70;
   let h = 80;
@@ -30,7 +34,5 @@ const goo = () => {
   const p = 110;
   console.log("goo");
 };
-
-boo();
 
 doo(130);

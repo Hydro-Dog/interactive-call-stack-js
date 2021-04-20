@@ -14,6 +14,10 @@ export class ExecutionContextService {
   private currentLexEnvFin = new BehaviorSubject<LexEnvEntity[]>([lexEnvEmpty]);
   currentLexEnvFin$ = this.currentLexEnvFin.asObservable();
 
+  currNestedLexEnvObj: Map<string, LexEnvMapInterface> = new Map();
+
+  currentLexEnvName: string = '';
+
   setCallStack(val: any) {
     this.callStackHist.next(val);
   }
@@ -37,4 +41,11 @@ export class ExecutionContextService {
   getCurrentLexEnvFin(): LexEnvEntity[] {
     return this.currentLexEnvFin.value;
   }
+}
+
+interface LexEnvMapInterface {
+  hist: LexEnvEntity[][];
+  idx: number;
+  parent: string;
+  funcDeclarationsArr: Map<string, LexEnvEntity[]>;
 }

@@ -8,6 +8,7 @@ export type ProgramBlockType =
   | ProgramBlockEnum.Identifier;
 
 export enum ProgramBlockEnum {
+  VariableDeclarator = 'VariableDeclarator',
   VariableDeclaration = 'VariableDeclaration',
   FunctionDeclaration = 'FunctionDeclaration',
   FunctionExpression = 'FunctionExpression',
