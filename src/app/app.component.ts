@@ -1,17 +1,11 @@
-import {
-  CompileShallowModuleMetadata,
-  ExpressionStatement,
-} from '@angular/compiler';
 import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
 import { cloneDeep } from 'lodash';
 import * as esprima from 'esprima';
 import * as estree from 'estree';
-import { Observable } from 'rxjs';
 import {
   ProgramBlockEnum,
-  ProgramBlock,
-  lexEnvEmpty,
+  LexEnvEntity,
 } from './interfaces/program-block.type';
 import { ExecutionContextService } from './services/execution-context.service';
 
@@ -25,133 +19,15 @@ export class AppComponent implements OnInit {
   codeForm = this.fb.group({
     userInput: '',
   });
-  parsedSript!: estree.Program;
-  currentStepIdx = 0;
-
-  activeLineNum!: number[];
-  numberOfLines!: number[];
 
   private userInput = this.codeForm.get('userInput');
-
-  callStackHist$: any;
-  currentProgramBlock!: LexEnvEntity[];
-  lexEnvHist$: Observable<Array<LexEnvEntity[]>>;
-  currentLexEnvFin$: Observable<LexEnvEntity[]>;
-  programmString: any;
 
   constructor(
     private fb: FormBuilder,
     private executionContextService: ExecutionContextService
-  ) {
-    this.callStackHist$ = this.executionContextService.callStackHist$;
-    this.lexEnvHist$ = this.executionContextService.lexEnvHist$;
-    this.currentLexEnvFin$ = this.executionContextService.currentLexEnvFin$;
-  }
+  ) {}
 
-  ngOnInit() {
-    // this.numberOfLines = Array.from({ length: 30 }, (item, i) => i + 1);
-    // this.activeLineNum = [2, 3, 4];
-    // this.lexEnvHist$.subscribe((x: any) => {
-    //   this.currentLexEnvFin$ = x;
-    //   console.log('this.currentLexEnvFin: ', this.currentLexEnvFin$);
-    // });
-  }
-
-  getLexEnvHist(code: string, name: string, parent: string) {
-    const parsedSript = esprima.parseScript(code, {
-      tolerant: true,
-      loc: true,
-    });
-
-    const currentLexEnvFin = this.composeLexicalEnviroment(parsedSript.body);
-    this.executionContextService.setCurrentLexEnvFin(currentLexEnvFin);
-
-    const currentLexEnvFirstPhase = this.getFitstPhaseLexicalEnviroment(
-      currentLexEnvFin
-    );
-
-    console.log('currentLexEnvFirstPhase: ', currentLexEnvFirstPhase);
-
-    this.executionContextService.setCurrentLexEnvHist([
-      currentLexEnvFirstPhase,
-    ]);
-
-    let lexEnvHist = this.executionContextService.getCurrentLexEnvHist();
-    const currentLexEnv = lexEnvHist[lexEnvHist.length - 1];
-
-    // step over all FDs and set step index
-    this.currentStepIdx = this.findStartIdx(currentLexEnv);
-
-    //iterate over lex env with generated index
-
-    while (this.currentStepIdx < currentLexEnv.length - 1) {
-      lexEnvHist = this.executionContextService.getCurrentLexEnvHist();
-      const newLexEnv = cloneDeep(lexEnvHist[lexEnvHist.length - 1]);
-      const currItem = currentLexEnvFin.find(
-        (codeBlock) =>
-          codeBlock.name === currentLexEnv[this.currentStepIdx].name &&
-          codeBlock.type === currentLexEnv[this.currentStepIdx].type
-      );
-
-      newLexEnv[this.currentStepIdx] = cloneDeep(currItem)!;
-      this.currentStepIdx++;
-      this.executionContextService.setCurrentLexEnvHist([
-        ...lexEnvHist,
-        newLexEnv,
-      ]);
-    }
-
-    this.executionContextService.currentLexEnvName = name;
-
-    console.log('hist: ', this.executionContextService.getCurrentLexEnvHist());
-
-    const exprStatementsArr = [];
-    const fdArr = new Map();
-    exprStatementsArr.push(
-      ...this.findAllExpressionStatements(currentLexEnvFin)
-    );
-
-    exprStatementsArr.forEach((exprStatement) => {
-      // console.log('exprStatement: ', exprStatement);
-      const funcDecl = currentLexEnv.find((lexEnvBlock) => {
-        return (
-          lexEnvBlock.name === exprStatement.name &&
-          (lexEnvBlock.type === ProgramBlockEnum.FunctionDeclaration ||
-            lexEnvBlock.type === ProgramBlockEnum.VariableDeclarator)
-        );
-      });
-      console.log('funcDecl: ', funcDecl);
-      const start = (funcDecl?.loc as estree.SourceLocation).start.line;
-      const end = (funcDecl?.loc as estree.SourceLocation).end.line;
-      fdArr.set(funcDecl!.name, { start, end });
-    });
-
-    this.executionContextService.currNestedLexEnvObj.set(name, {
-      hist: this.executionContextService.getCurrentLexEnvHist(),
-      idx: this.findStartIdx(currentLexEnv),
-      parent,
-      funcDeclarationsArr: fdArr,
-    });
-  }
-
-  findStartIdx(lexEnv: LexEnvEntity[]) {
-    return (
-      lexEnv.filter(
-        (codeBlock) => codeBlock.type === ProgramBlockEnum.FunctionDeclaration
-      ).length - 1
-    );
-  }
-
-  getCodeByLines(start: number, end: number, code: string) {
-    const codeArr = code.split('\n');
-    return codeArr.splice(start, end - start - 1).join('\n');
-  }
-
-  findAllExpressionStatements(code: LexEnvEntity[]) {
-    return code.filter(
-      (codeBlock) => codeBlock.type === ProgramBlockEnum.ExpressionStatement
-    );
-  }
+  ngOnInit() {}
 
   getParsedScript(code: string): esprima.Program {
     return esprima.parseScript(code, {
@@ -161,170 +37,29 @@ export class AppComponent implements OnInit {
   }
 
   onSubmit() {
-    this.programmString = this.userInput?.value;
-    console.log('res: ', this.getCodeByLines(12, 17, this.programmString));
-    this.getLexEnvHist(this.programmString, 'global', 'null');
-    this.currentStepIdx = this.findStartIdx(
-      this.executionContextService.getCurrentLexEnvFin()
-    );
-  }
-
-  isActiveLine(lineNum: unknown) {
-    return this.activeLineNum.includes(lineNum as number);
-  }
-
-  goNextBlock() {
-    const currLexEnv = this.executionContextService.currNestedLexEnvObj.get(
-      this.executionContextService.currentLexEnvName
-    );
-    console.log('currLexEnv: ', currLexEnv);
-    console.log('currLexEnv hist: ', currLexEnv?.hist[currLexEnv.idx]);
-    console.log(
-      'curr step: ',
-      currLexEnv?.hist[currLexEnv.idx][currLexEnv.idx]
-    );
-    if (
-      currLexEnv?.hist[currLexEnv.idx][currLexEnv.idx].type ===
-      ProgramBlockEnum.ExpressionStatement
-    ) {
-      // this.exprStatementsArr.forEach((exprStatement) => {
-      //   // console.log('exprStatement: ', exprStatement);
-      //   const funcDecl = currentLexEnv.find((lexEnvBlock) => {
-      //     return (
-      //       lexEnvBlock.name === exprStatement.name &&
-      //       (lexEnvBlock.type === ProgramBlockEnum.FunctionDeclaration ||
-      //         lexEnvBlock.type === ProgramBlockEnum.VariableDeclarator)
-      //     );
-      //   });
-      //   console.log('funcDecl: ', funcDecl);
-      //   const start = (funcDecl?.loc as estree.SourceLocation).start.line;
-      //   const end = (funcDecl?.loc as estree.SourceLocation).end.line;
-      //   const code = this.getCodeByLines(start, end, this.programmString);
-      //   if (code) {
-      //     this.getLexEnvHist(code, 'foo');
-      //     console.log('aza: ', this.getLexEnvHist(code, 'foo'));
-      //   } else {
-      //     console.error('code is empty');
-      //   }
-      // });
-      // exprStatementsArr.forEach((exprStatement) => {
-      //     const funcDecl = currentLexEnv.find((lexEnvBlock) => {
-      //       return (
-      //         lexEnvBlock.name === exprStatement.name &&
-      //         lexEnvBlock.type === ProgramBlockEnum.FunctionDeclaration
-      //       );
-      //     });
-      //     console.log('funcDecl: ', funcDecl);
-      //     const start = (funcDecl?.loc as estree.SourceLocation).start.line;
-      //     const end = (funcDecl?.loc as estree.SourceLocation).end.line;
-      //     const code = this.getCodeByLines(start, end, this.programmString);
-      //     if (code) {
-      //       this.getLexEnvHist(code);
-      //       console.log('aza: ', this.getLexEnvHist(code));
-      //     } else {
-      //       console.error('code is empty');
-      //     }
-      // });Z
-    }
-
-    currLexEnv!.idx++;
-  }
-
-  goPrevBlock() {}
-
-  getFitstPhaseLexicalEnviroment(lexicalEnviromentEntityArray: LexEnvEntity[]) {
-    const hoistedValues = cloneDeep(lexicalEnviromentEntityArray).filter(
-      (bodyBlock) => {
-        return (
-          bodyBlock.type === ProgramBlockEnum.FunctionDeclaration ||
-          bodyBlock.type === ProgramBlockEnum.ExpressionStatement ||
-          bodyBlock.kind === 'var' ||
-          bodyBlock.kind === 'let' ||
-          bodyBlock.kind === 'const'
-        );
-      }
-    );
-
-    const hoistedVariables = hoistedValues.map((bodyBlock) => {
-      if (bodyBlock.kind === 'var') {
-        bodyBlock.value = 'undefined';
-      } else if (bodyBlock.kind === 'let' || bodyBlock.kind === 'const') {
-        bodyBlock.value = 'uninitialized';
-      }
-      if (bodyBlock.type === ProgramBlockEnum.ExpressionStatement) {
-        bodyBlock.lexEnv = lexEnvEmpty;
-        bodyBlock.scope = cloneDeep(
-          this.executionContextService.getCurrentLexEnvFin()
-        );
-      }
-
-      return bodyBlock;
-    });
-
-    const FDs = hoistedVariables.filter(
-      (codeBlock) => codeBlock.type === ProgramBlockEnum.FunctionDeclaration
-    );
-    const vars = hoistedVariables.filter(
-      (codeBlock) => codeBlock.type !== ProgramBlockEnum.FunctionDeclaration
-    );
-
-    return FDs.concat(vars);
-  }
-
-  composeLexicalEnviroment(body: ProgramBlock[]): LexEnvEntity[] {
-    const lexicalEnvArr: LexEnvEntity[] = [];
-
-    body.forEach((bodyBlock: ProgramBlock, i: number, arr: ProgramBlock[]) => {
-      if (bodyBlock.type === ProgramBlockEnum.VariableDeclaration) {
-        const name = (bodyBlock.declarations[0].id as estree.Identifier).name;
-        const value =
-          (bodyBlock.declarations[0].init as estree.Literal).value ||
-          (bodyBlock.declarations[0].init as estree.Expression).type;
-        const type = bodyBlock.declarations[0].type;
-        const kind = bodyBlock.kind;
-        const loc = bodyBlock.loc;
-
-        lexicalEnvArr.push({ name, type, kind, value, loc });
-      }
-
-      if (bodyBlock.type === ProgramBlockEnum.FunctionDeclaration) {
-        const name = bodyBlock.id?.name;
-        const value = null;
-        const type = bodyBlock.type;
-        const kind = null;
-        const loc = bodyBlock.loc;
-
-        lexicalEnvArr.push({ name, type, kind, value, loc });
-      }
-
-      if (bodyBlock.type === ProgramBlockEnum.ExpressionStatement) {
-        const name = ((bodyBlock.expression as estree.CallExpression)
-          .callee as estree.Identifier).name;
-        const value = null;
-        const type = bodyBlock.type;
-        const kind = null;
-        const loc = bodyBlock.loc;
-
-        lexicalEnvArr.push({ name, type, kind, value, loc });
-      }
-    });
-    console.log('lexicalEnvArr: ', lexicalEnvArr);
-
-    return lexicalEnvArr;
+    const programmString = this.userInput?.value;
+    console.log('getParsedScript: ', this.getParsedScript(programmString));
+    const programm = this.getParsedScript(programmString) as estree.Program;
+    generateLexEnvRecursive(programm.body);
   }
 }
 
-export interface LexEnvEntity {
-  lexEnvCompleted?: boolean;
-  name: string | undefined;
-  type:
-    | 'ExpressionStatement'
-    | 'FunctionDeclaration'
-    | 'VariableDeclarator'
-    | 'empty';
-  kind: 'var' | 'let' | 'const' | 'empty' | null;
-  value: string | number | bigint | true | RegExp | null | undefined | 'empty';
-  loc: estree.SourceLocation | null | undefined | 'empty';
-  lexEnv?: LexEnvEntity;
-  scope?: LexEnvEntity[];
+//event soursing (event driven approach) каждое распарсивание - это ивент
+//хранить списком FD по uuid, и забить на вложенность
+
+function generateLexEnvRecursive(
+  body: Array<
+    | estree.FunctionDeclaration
+    | estree.Directive
+    | estree.Statement
+    | estree.ModuleDeclaration
+  >
+) {
+  console.log('body: ', body);
+  body.forEach((entity) => {
+    if (entity.type === ProgramBlockEnum.FunctionDeclaration) {
+      console.log('entity: ', entity);
+      generateLexEnvRecursive(entity!.body!.body);
+    }
+  });
 }

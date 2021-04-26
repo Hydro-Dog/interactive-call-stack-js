@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
-import { LexEnvEntity } from '../app.component';
-import { lexEnvEmpty } from '../interfaces/program-block.type';
+import { lexEnvEmpty, LexEnvEntity } from '../interfaces/program-block.type';
 
 @Injectable({ providedIn: 'root' })
 export class ExecutionContextService {
@@ -14,7 +13,7 @@ export class ExecutionContextService {
   private currentLexEnvFin = new BehaviorSubject<LexEnvEntity[]>([lexEnvEmpty]);
   currentLexEnvFin$ = this.currentLexEnvFin.asObservable();
 
-  currNestedLexEnvObj: Map<string, LexEnvMapInterface> = new Map();
+  nestedLexEnviroments: Map<string, LexEnvMapInterface> = new Map();
 
   currentLexEnvName: string = '';
 
@@ -43,9 +42,9 @@ export class ExecutionContextService {
   }
 }
 
-interface LexEnvMapInterface {
+export interface LexEnvMapInterface {
   hist: LexEnvEntity[][];
   idx: number;
   parent: string;
-  funcDeclarationsArr: Map<string, LexEnvEntity[]>;
+  funcDeclarationsArr: Map<string, { start: number; end: number }>;
 }

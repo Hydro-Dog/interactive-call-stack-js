@@ -1,12 +1,4 @@
 <div class="code-input-container">
-  <div>
-    <div
-      [style.color]="isActiveLine(lineNumber) ? 'red' : 'black'"
-      *ngFor="let lineNumber of numberOfLines"
-    >
-      {{ lineNumber }}
-    </div>
-  </div>
   <form [formGroup]="codeForm" (ngSubmit)="onSubmit()">
     <textarea
       class="code-area"
@@ -18,8 +10,8 @@
   </form>
 </div>
 
-<button (click)="goNextBlock()">Go Next</button>
+<!-- <button (click)="goNextBlock()">Go Next</button>
 
-<button (click)="goPrevBlock()">Go Prev</button>
+<button (click)="goPrevBlock()">Go Prev</button> -->
 
 <div></div>

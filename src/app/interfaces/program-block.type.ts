@@ -1,5 +1,4 @@
 import * as estree from 'estree';
-import { LexEnvEntity } from '../app.component';
 
 export type ProgramBlockType =
   | ProgramBlockEnum.ExpressionStatement
@@ -29,3 +28,19 @@ export const lexEnvEmpty: LexEnvEntity = {
   value: 'empty',
   loc: 'empty',
 };
+
+export interface LexEnvEntity {
+  lexEnvCompleted?: boolean;
+  name: string | undefined;
+  type:
+    | 'ExpressionStatement'
+    | 'FunctionDeclaration'
+    | 'VariableDeclarator'
+    | 'empty';
+  kind: 'var' | 'let' | 'const' | 'empty' | null;
+  value: string | number | bigint | true | RegExp | null | undefined | 'empty';
+  loc: estree.SourceLocation | null | undefined | 'empty';
+  lexEnv?: LexEnvEntity;
+  scope?: LexEnvEntity[];
+  body?: LexEnvEntity[];
+}
