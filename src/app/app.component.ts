@@ -8,6 +8,7 @@ import {
   LexEnvEntity,
 } from './interfaces/program-block.type';
 import { ExecutionContextService } from './services/execution-context.service';
+import { CompileShallowModuleMetadata } from '@angular/compiler';
 
 @Component({
   selector: 'app-root',
@@ -19,6 +20,8 @@ export class AppComponent implements OnInit {
   codeForm = this.fb.group({
     userInput: '',
   });
+
+  stepIndex = 0;
 
   private userInput = this.codeForm.get('userInput');
 
@@ -38,21 +41,16 @@ export class AppComponent implements OnInit {
 
     generateLexEnvLog(scopes[0].body, scopes[0].lexEnvLog[0]);
 
-    // const a = scopes.map((scope) => {
-    //   const copy = cloneDeep(scope.lexEnvLog[0]);
-    //   return {
-    //     ...scope,
-    //     lexEnvLog: generateLexEnvLog(cloneDeep(scope.body), copy),
-    //   };
-    // });
+    scopes = this.addLexEnvLogs();
+    curentLexEnv = scopes[0];
 
-    console.log('RESULT! ', this.addLexEnvLogs());
+    console.log('scopes: ', scopes);
   }
 
   addLexEnvLogs() {
-    console.log('addLexEnvLogs called');
-    console.log('scopes: ', scopes);
-    const a = scopes.map((scope, i, array) => {
+    //Нужно привести lexEnvsLogs и body к одинаковому количеству элементов.
+    //Или перебирать не lexEnvLog, а body
+    const scope = scopes.map((scope, i, array) => {
       const copy = cloneDeep(scope.lexEnvLog[0]);
       console.log('gen logs: ', generateLexEnvLog(scope.body, copy));
       return {
@@ -61,7 +59,25 @@ export class AppComponent implements OnInit {
       };
     });
 
-    console.log('aaaaaa: ', a);
+    return scope;
+  }
+
+  nextClicked() {
+    if (this.stepIndex === 0) {
+      this.stepIndex = curentLexEnv.lexEnvLog[this.stepIndex].filter(
+        (x) => x.type === ProgramBlockEnum.FunctionDeclaration
+      ).length;
+    }
+
+    console.log('curent LexEnv: ', curentLexEnv);
+    console.log('curent stepIndex: ', this.stepIndex);
+    console.log(
+      'curent lexEnvLog el: ',
+      curentLexEnv.lexEnvLog[this.stepIndex]
+    );
+    const currEl = curentLexEnv.lexEnvLog[this.stepIndex][this.stepIndex];
+    console.log('curent elemet: ', currEl);
+    this.stepIndex++;
   }
 }
 
@@ -69,24 +85,23 @@ export class AppComponent implements OnInit {
 //хранить списком FD по uuid, и забить на вложенность
 
 const log = [];
-const scopes: any[] = [];
+let scopes: Scope[] = [];
+let curentLexEnv: Scope;
 
-function generateLexEnvRecursive(
-  body: Array<
-    | estree.FunctionDeclaration
-    | estree.Directive
-    | estree.Statement
-    | estree.ModuleDeclaration
-  >,
-  name: string,
-  parent: string
-) {
+function generateLexEnvRecursive(body: Body, name: string, parentName: string) {
   const lexEnv = generateFirstStepLexEnv(body);
-  scopes.push({ name, body, parent, lexEnvLog: [lexEnv] });
+  scopes.push({ name, body, parentName, lexEnvLog: [lexEnv] });
   body.forEach((entity) => {
     if (entity.type === ProgramBlockEnum.FunctionDeclaration) {
       generateLexEnvRecursive(entity!.body!.body, entity.id!.name, name);
     }
+  });
+
+  //set parent lex envs
+  scopes = scopes.map((scope1) => {
+    const outerEnv = scopes.find((scope2) => scope2.name === scope1.parentName);
+
+    return { ...scope1, outerEnv };
   });
 }
 
@@ -97,14 +112,7 @@ function getParsedScript(code: string): esprima.Program {
   });
 }
 
-function generateFirstStepLexEnv(
-  body: Array<
-    | estree.FunctionDeclaration
-    | estree.Directive
-    | estree.Statement
-    | estree.ModuleDeclaration
-  >
-): EnviromentRecordEntity[] {
+function generateFirstStepLexEnv(body: Body): EnviromentRecordEntity[] {
   let firstStepLexEnvBody = [];
   let firstStepLexEnv = [];
 
@@ -155,7 +163,7 @@ function generateFirstStepLexEnv(
         loc = (((((entity as unknown) as estree.Directive)
           .expression as unknown) as estree.BaseCallExpression)
           .callee as estree.Identifier).loc!;
-        return { name, type, kind, value, loc };
+        return { name, type, kind, value: 'not executed', loc };
       default:
         return {
           name: 'lol',
@@ -170,23 +178,10 @@ function generateFirstStepLexEnv(
   return firstStepLexEnv;
 }
 
-interface EnviromentRecordEntity {
-  name: string;
-  type: string;
-  kind?: string;
-  value: any;
-}
-
 function generateLexEnvLog(
-  body: Array<
-    | estree.FunctionDeclaration
-    | estree.Directive
-    | estree.Statement
-    | estree.ModuleDeclaration
-  >,
+  body: Body,
   lexEnvFirstStep: EnviromentRecordEntity[]
 ) {
-  console.log('body: ', body, 'lexEnvFirstStep: ', lexEnvFirstStep);
   const resultLog: EnviromentRecordEntity[][] = [lexEnvFirstStep];
 
   lexEnvFirstStep.forEach((entity, i, array) => {
@@ -200,16 +195,26 @@ function generateLexEnvLog(
 
       const newLexEnv = {
         ...entity,
-        value: getVarValue(variable as estree.VariableDeclaration)
-          ? getVarValue(variable as estree.VariableDeclaration)
-          : entity.value,
+        value:
+          getVarValue(variable as estree.VariableDeclaration) ||
+          'initialized FD',
       };
 
       const lexEnvCopy = cloneDeep(resultLog[resultLog.length - 1]);
       lexEnvCopy[i] = newLexEnv;
       resultLog.push((lexEnvCopy as unknown) as EnviromentRecordEntity[]);
     }
-    console.log('resultLog: ', resultLog);
+
+    if (entity.type === ProgramBlockEnum.ExpressionStatement) {
+      const newLexEnv = {
+        ...entity,
+        value: 'executed',
+      };
+
+      const lexEnvCopy = cloneDeep(resultLog[resultLog.length - 1]);
+      lexEnvCopy[i] = newLexEnv;
+      resultLog.push((lexEnvCopy as unknown) as EnviromentRecordEntity[]);
+    }
   });
   return resultLog;
 }
@@ -230,3 +235,24 @@ interface LexEnvInterface {
   envRec: EnviromentRecordEntity[];
   outerEnv: LexEnvInterface;
 }
+
+interface EnviromentRecordEntity {
+  name: string;
+  type: string;
+  kind?: string;
+  value: any;
+}
+
+interface Scope {
+  name: string;
+  parentName: string;
+  body: Body;
+  lexEnvLog: EnviromentRecordEntity[][];
+}
+
+type Body = Array<
+  | estree.FunctionDeclaration
+  | estree.Directive
+  | estree.Statement
+  | estree.ModuleDeclaration
+>;
