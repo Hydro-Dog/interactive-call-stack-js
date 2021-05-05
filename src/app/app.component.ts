@@ -8,7 +8,10 @@ import {
   LexEnvEntity,
 } from './interfaces/program-block.type';
 import { ExecutionContextService } from './services/execution-context.service';
-import { CompileShallowModuleMetadata } from '@angular/compiler';
+
+const NOT_EXECUTED = 'not executed';
+const EXECUTED = 'executed';
+const FUNCTION_CALL = 'function call';
 
 @Component({
   selector: 'app-root',
@@ -37,8 +40,6 @@ export class AppComponent implements OnInit {
     const programm = getParsedScript(programmString) as estree.Program;
     generateLexEnvRecursive(programm.body, 'global', 'null');
 
-    const globaFirstStep = generateFirstStepLexEnv(programm.body);
-
     generateLexEnvLog(scopes[0].body, scopes[0].lexEnvLog[0]);
 
     scopes = this.addLexEnvLogs();
@@ -63,21 +64,34 @@ export class AppComponent implements OnInit {
   }
 
   nextClicked() {
-    if (this.stepIndex === 0) {
-      this.stepIndex = curentLexEnv.lexEnvLog[this.stepIndex].filter(
-        (x) => x.type === ProgramBlockEnum.FunctionDeclaration
-      ).length;
-    }
-
     console.log('curent LexEnv: ', curentLexEnv);
-    console.log('curent stepIndex: ', this.stepIndex);
+    console.log('curent index: ', curentLexEnv.index);
     console.log(
       'curent lexEnvLog el: ',
-      curentLexEnv.lexEnvLog[this.stepIndex]
+      curentLexEnv.lexEnvLog[curentLexEnv.index]
     );
-    const currEl = curentLexEnv.lexEnvLog[this.stepIndex][this.stepIndex];
+    const currEl =
+      curentLexEnv.lexEnvLog[curentLexEnv.index][curentLexEnv.index];
     console.log('curent elemet: ', currEl);
-    this.stepIndex++;
+    //вторая часть условия - говно
+    //надо как-то четко детерминировать вызовы функций
+    if (
+      currEl.type === ProgramBlockEnum.ExpressionStatement &&
+      currEl.kind === FUNCTION_CALL
+    ) {
+      console.log('STEP INSIDE');
+      if (!currEl.name) {
+        console.warn('defaul function expression');
+      } else {
+        const scope = scopes.find((scope) => scope.name === currEl.name);
+        if (!scope) {
+          console.warn(`no such function declaration with name ${currEl.name}`);
+        } else {
+          curentLexEnv = scope;
+        }
+      }
+    }
+    curentLexEnv.index++;
   }
 }
 
@@ -89,8 +103,14 @@ let scopes: Scope[] = [];
 let curentLexEnv: Scope;
 
 function generateLexEnvRecursive(body: Body, name: string, parentName: string) {
-  const lexEnv = generateFirstStepLexEnv(body);
-  scopes.push({ name, body, parentName, lexEnvLog: [lexEnv] });
+  const { envRec, index } = generateFirstStepLexEnv(body);
+  scopes.push({
+    name,
+    body,
+    parentName,
+    lexEnvLog: [envRec],
+    index,
+  });
   body.forEach((entity) => {
     if (entity.type === ProgramBlockEnum.FunctionDeclaration) {
       generateLexEnvRecursive(entity!.body!.body, entity.id!.name, name);
@@ -112,7 +132,9 @@ function getParsedScript(code: string): esprima.Program {
   });
 }
 
-function generateFirstStepLexEnv(body: Body): EnviromentRecordEntity[] {
+function generateFirstStepLexEnv(
+  body: Body
+): { envRec: EnviromentRecordEntity[]; index: number } {
   let firstStepLexEnvBody = [];
   let firstStepLexEnv = [];
 
@@ -140,6 +162,7 @@ function generateFirstStepLexEnv(body: Body): EnviromentRecordEntity[] {
         kind = entity.type;
         value = 'initialized';
         loc = entity.loc!;
+
         return { name, type, value, loc };
       case ProgramBlockEnum.VariableDeclaration:
         name = ((((entity as estree.VariableDeclaration)
@@ -163,7 +186,13 @@ function generateFirstStepLexEnv(body: Body): EnviromentRecordEntity[] {
         loc = (((((entity as unknown) as estree.Directive)
           .expression as unknown) as estree.BaseCallExpression)
           .callee as estree.Identifier).loc!;
-        return { name, type, kind, value: 'not executed', loc };
+        return {
+          name,
+          type,
+          kind: 'function call',
+          value: 'not executed',
+          loc,
+        };
       default:
         return {
           name: 'lol',
@@ -175,7 +204,7 @@ function generateFirstStepLexEnv(body: Body): EnviromentRecordEntity[] {
     }
   });
 
-  return firstStepLexEnv;
+  return { envRec: firstStepLexEnv, index: functionDeclarations.length };
 }
 
 function generateLexEnvLog(
@@ -227,15 +256,6 @@ function getVarName(block: estree.VariableDeclaration) {
   return (block.declarations[0].id as estree.Identifier).name;
 }
 
-function pushLexEnv(lexEnv: any, loc: any) {
-  log.push({ lexEnv, loc });
-}
-
-interface LexEnvInterface {
-  envRec: EnviromentRecordEntity[];
-  outerEnv: LexEnvInterface;
-}
-
 interface EnviromentRecordEntity {
   name: string;
   type: string;
@@ -248,6 +268,7 @@ interface Scope {
   parentName: string;
   body: Body;
   lexEnvLog: EnviromentRecordEntity[][];
+  index: number;
 }
 
 type Body = Array<
