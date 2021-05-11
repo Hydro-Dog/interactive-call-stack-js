@@ -51,7 +51,7 @@ export class AppComponent implements OnInit {
   addLexEnvLogs() {
     //Нужно привести lexEnvsLogs и body к одинаковому количеству элементов.
     //Или перебирать не lexEnvLog, а body
-    const scope = scopes.map((scope, i, array) => {
+    const scope = scopes.map((scope) => {
       const copy = cloneDeep(scope.lexEnvLog[0]);
       console.log('gen logs: ', generateLexEnvLog(scope.body, copy));
       return {
@@ -64,14 +64,21 @@ export class AppComponent implements OnInit {
   }
 
   nextClicked() {
+    console.log('-----------------------------------');
     console.log('curent LexEnv: ', curentLexEnv);
-    console.log('curent index: ', curentLexEnv.index);
+
+    console.log(
+      'indexEl: ',
+      curentLexEnv.indexEl,
+      'indexEnv: ',
+      curentLexEnv.indexEnv
+    );
     console.log(
       'curent lexEnvLog el: ',
-      curentLexEnv.lexEnvLog[curentLexEnv.index]
+      curentLexEnv.lexEnvLog[curentLexEnv.indexEnv]
     );
     const currEl =
-      curentLexEnv.lexEnvLog[curentLexEnv.index][curentLexEnv.index];
+      curentLexEnv.lexEnvLog[curentLexEnv.indexEnv][curentLexEnv.indexEl];
     console.log('curent elemet: ', currEl);
     //вторая часть условия - говно
     //надо как-то четко детерминировать вызовы функций
@@ -81,17 +88,39 @@ export class AppComponent implements OnInit {
     ) {
       console.log('STEP INSIDE');
       if (!currEl.name) {
-        console.warn('defaul function expression');
+        console.warn('native code');
       } else {
         const scope = scopes.find((scope) => scope.name === currEl.name);
         if (!scope) {
           console.warn(`no such function declaration with name ${currEl.name}`);
         } else {
           curentLexEnv = scope;
+
+          console.log('-----------------------------------');
+          console.log('curent LexEnv: ', curentLexEnv);
+
+          console.log(
+            'indexEl: ',
+            curentLexEnv.indexEl,
+            'indexEnv: ',
+            curentLexEnv.indexEnv
+          );
+          console.log(
+            'curent lexEnvLog el: ',
+            curentLexEnv.lexEnvLog[curentLexEnv.indexEnv]
+          );
+
+          const currEl =
+            curentLexEnv.lexEnvLog[curentLexEnv.indexEnv][curentLexEnv.indexEl];
+          console.log('curent elemet: ', currEl);
         }
       }
+      curentLexEnv.indexEl++;
+      curentLexEnv.indexEnv++;
+    } else {
+      curentLexEnv.indexEl++;
+      curentLexEnv.indexEnv++;
     }
-    curentLexEnv.index++;
   }
 }
 
@@ -103,13 +132,14 @@ let scopes: Scope[] = [];
 let curentLexEnv: Scope;
 
 function generateLexEnvRecursive(body: Body, name: string, parentName: string) {
-  const { envRec, index } = generateFirstStepLexEnv(body);
+  const { envRec, indexEl } = generateFirstStepLexEnv(body);
   scopes.push({
     name,
     body,
     parentName,
     lexEnvLog: [envRec],
-    index,
+    indexEl,
+    indexEnv: 1,
   });
   body.forEach((entity) => {
     if (entity.type === ProgramBlockEnum.FunctionDeclaration) {
@@ -134,7 +164,7 @@ function getParsedScript(code: string): esprima.Program {
 
 function generateFirstStepLexEnv(
   body: Body
-): { envRec: EnviromentRecordEntity[]; index: number } {
+): { envRec: EnviromentRecordEntity[]; indexEl: number } {
   let firstStepLexEnvBody = [];
   let firstStepLexEnv = [];
 
@@ -204,7 +234,10 @@ function generateFirstStepLexEnv(
     }
   });
 
-  return { envRec: firstStepLexEnv, index: functionDeclarations.length };
+  return {
+    envRec: firstStepLexEnv,
+    indexEl: functionDeclarations.length,
+  };
 }
 
 function generateLexEnvLog(
@@ -268,7 +301,8 @@ interface Scope {
   parentName: string;
   body: Body;
   lexEnvLog: EnviromentRecordEntity[][];
-  index: number;
+  indexEl: number;
+  indexEnv: number;
 }
 
 type Body = Array<
