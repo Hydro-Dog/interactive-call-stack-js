@@ -3,10 +3,7 @@ import { FormBuilder } from '@angular/forms';
 import { cloneDeep } from 'lodash';
 import * as esprima from 'esprima';
 import * as estree from 'estree';
-import {
-  ProgramBlockEnum,
-  LexEnvEntity,
-} from './interfaces/program-block.type';
+import { ProgramBlockEnum } from './interfaces/program-block.type';
 import { ExecutionContextService } from './services/execution-context.service';
 
 const NOT_EXECUTED = 'not executed';
@@ -35,9 +32,15 @@ export class AppComponent implements OnInit {
 
   ngOnInit() {}
 
+  getParentScope(lexEnv: Scope, scopes: Scope[]) {
+    const parentScopeName = lexEnv.parentName;
+    return scopes.find((x) => x.name === parentScopeName)!;
+  }
+
   onSubmit() {
     const programmString = this.userInput?.value;
     const programm = getParsedScript(programmString) as estree.Program;
+    console.log('programm: ', programm);
     generateLexEnvRecursive(programm.body, 'global', 'null');
 
     generateLexEnvLog(scopes[0].body, scopes[0].lexEnvLog[0]);
@@ -77,49 +80,65 @@ export class AppComponent implements OnInit {
       'curent lexEnvLog el: ',
       curentLexEnv.lexEnvLog[curentLexEnv.indexEnv]
     );
-    const currEl =
-      curentLexEnv.lexEnvLog[curentLexEnv.indexEnv][curentLexEnv.indexEl];
-    console.log('curent elemet: ', currEl);
-    //вторая часть условия - говно
-    //надо как-то четко детерминировать вызовы функций
-    if (
-      currEl.type === ProgramBlockEnum.ExpressionStatement &&
-      currEl.kind === FUNCTION_CALL
-    ) {
-      console.log('STEP INSIDE');
-      if (!currEl.name) {
-        console.warn('native code');
-      } else {
-        const scope = scopes.find((scope) => scope.name === currEl.name);
-        if (!scope) {
-          console.warn(`no such function declaration with name ${currEl.name}`);
+
+    if (curentLexEnv.lexEnvLog[curentLexEnv.indexEnv]) {
+      const currEl =
+        curentLexEnv.lexEnvLog[curentLexEnv.indexEnv][curentLexEnv.indexEl];
+      console.log('curent elemet: ', currEl);
+      //вторая часть условия - говно
+      //надо как-то четко детерминировать вызовы функций
+      if (
+        currEl.type === ProgramBlockEnum.ExpressionStatement &&
+        currEl.kind === FUNCTION_CALL
+      ) {
+        console.log('STEP INSIDE');
+        if (!currEl.name) {
+          console.warn('native code');
         } else {
-          curentLexEnv = scope;
+          const scope = scopes.find((scope) => scope.name === currEl.name);
+          if (!scope) {
+            console.warn(
+              `no such function declaration with name ${currEl.name}`
+            );
+          } else {
+            curentLexEnv = scope;
 
-          console.log('-----------------------------------');
-          console.log('curent LexEnv: ', curentLexEnv);
+            console.log('-----------------------------------');
+            console.log('curent LexEnv: ', curentLexEnv);
 
-          console.log(
-            'indexEl: ',
-            curentLexEnv.indexEl,
-            'indexEnv: ',
-            curentLexEnv.indexEnv
-          );
-          console.log(
-            'curent lexEnvLog el: ',
-            curentLexEnv.lexEnvLog[curentLexEnv.indexEnv]
-          );
+            console.log(
+              'indexEl: ',
+              curentLexEnv.indexEl,
+              'indexEnv: ',
+              curentLexEnv.indexEnv
+            );
+            console.log(
+              'curent lexEnvLog el: ',
+              curentLexEnv.lexEnvLog[curentLexEnv.indexEnv]
+            );
 
-          const currEl =
-            curentLexEnv.lexEnvLog[curentLexEnv.indexEnv][curentLexEnv.indexEl];
-          console.log('curent elemet: ', currEl);
+            if (curentLexEnv.lexEnvLog[curentLexEnv.indexEnv]) {
+              const currEl =
+                curentLexEnv.lexEnvLog[curentLexEnv.indexEnv][
+                  curentLexEnv.indexEl
+                ];
+              console.log('curent elemet: ', currEl);
+            } else {
+              this.getParentScope(curentLexEnv, scopes);
+              curentLexEnv = this.getParentScope(curentLexEnv, scopes);
+
+              console.log('!!! curentLexEnv', curentLexEnv);
+            }
+          }
         }
       }
       curentLexEnv.indexEl++;
       curentLexEnv.indexEnv++;
     } else {
-      curentLexEnv.indexEl++;
-      curentLexEnv.indexEnv++;
+      this.getParentScope(curentLexEnv, scopes);
+      curentLexEnv = this.getParentScope(curentLexEnv, scopes);
+
+      console.log('!!! curentLexEnv', curentLexEnv);
     }
   }
 }
@@ -131,7 +150,13 @@ const log = [];
 let scopes: Scope[] = [];
 let curentLexEnv: Scope;
 
-function generateLexEnvRecursive(body: Body, name: string, parentName: string) {
+function generateLexEnvRecursive(
+  body: Body,
+  name: string,
+  parentName: string,
+  params?: any[]
+) {
+  console.log('body: ', body);
   const { envRec, indexEl } = generateFirstStepLexEnv(body);
   scopes.push({
     name,
@@ -140,10 +165,19 @@ function generateLexEnvRecursive(body: Body, name: string, parentName: string) {
     lexEnvLog: [envRec],
     indexEl,
     indexEnv: 1,
+    params: params?.length ? [...params] : [],
   });
   body.forEach((entity) => {
     if (entity.type === ProgramBlockEnum.FunctionDeclaration) {
-      generateLexEnvRecursive(entity!.body!.body, entity.id!.name, name);
+      generateLexEnvRecursive(
+        entity!.body!.body,
+        entity.id!.name,
+        name,
+        entity!.params.map((x) => ({
+          name: (x as estree.Identifier).name,
+          val: null,
+        }))
+      );
     }
   });
 
@@ -162,9 +196,10 @@ function getParsedScript(code: string): esprima.Program {
   });
 }
 
-function generateFirstStepLexEnv(
-  body: Body
-): { envRec: EnviromentRecordEntity[]; indexEl: number } {
+function generateFirstStepLexEnv(body: Body): {
+  envRec: EnviromentRecordEntity[];
+  indexEl: number;
+} {
   let firstStepLexEnvBody = [];
   let firstStepLexEnv = [];
 
@@ -195,13 +230,18 @@ function generateFirstStepLexEnv(
 
         return { name, type, value, loc };
       case ProgramBlockEnum.VariableDeclaration:
-        name = ((((entity as estree.VariableDeclaration)
-          .declarations[0] as unknown) as estree.VariableDeclarator)
-          .id as estree.Identifier).name;
+        name = (
+          (
+            (entity as estree.VariableDeclaration)
+              .declarations[0] as unknown as estree.VariableDeclarator
+          ).id as estree.Identifier
+        ).name;
         type = entity.type;
         kind = entity.kind;
-        loc = (((entity as estree.VariableDeclaration)
-          .declarations[0] as unknown) as estree.VariableDeclarator).loc!;
+        loc = (
+          (entity as estree.VariableDeclaration)
+            .declarations[0] as unknown as estree.VariableDeclarator
+        ).loc!;
         if (entity.kind === 'var') {
           value = 'undefined';
         } else {
@@ -209,13 +249,19 @@ function generateFirstStepLexEnv(
         }
         return { name, type, kind, value, loc };
       case ProgramBlockEnum.ExpressionStatement:
-        name = (((((entity as unknown) as estree.Directive)
-          .expression as unknown) as estree.BaseCallExpression)
-          .callee as estree.Identifier).name;
+        name = (
+          (
+            (entity as unknown as estree.Directive)
+              .expression as unknown as estree.BaseCallExpression
+          ).callee as estree.Identifier
+        ).name;
         type = 'ExpressionStatement';
-        loc = (((((entity as unknown) as estree.Directive)
-          .expression as unknown) as estree.BaseCallExpression)
-          .callee as estree.Identifier).loc!;
+        loc = (
+          (
+            (entity as unknown as estree.Directive)
+              .expression as unknown as estree.BaseCallExpression
+          ).callee as estree.Identifier
+        ).loc!;
         return {
           name,
           type,
@@ -264,7 +310,7 @@ function generateLexEnvLog(
 
       const lexEnvCopy = cloneDeep(resultLog[resultLog.length - 1]);
       lexEnvCopy[i] = newLexEnv;
-      resultLog.push((lexEnvCopy as unknown) as EnviromentRecordEntity[]);
+      resultLog.push(lexEnvCopy as unknown as EnviromentRecordEntity[]);
     }
 
     if (entity.type === ProgramBlockEnum.ExpressionStatement) {
@@ -275,7 +321,7 @@ function generateLexEnvLog(
 
       const lexEnvCopy = cloneDeep(resultLog[resultLog.length - 1]);
       lexEnvCopy[i] = newLexEnv;
-      resultLog.push((lexEnvCopy as unknown) as EnviromentRecordEntity[]);
+      resultLog.push(lexEnvCopy as unknown as EnviromentRecordEntity[]);
     }
   });
   return resultLog;
@@ -303,6 +349,7 @@ interface Scope {
   lexEnvLog: EnviromentRecordEntity[][];
   indexEl: number;
   indexEnv: number;
+  params?: Array<{ name: string; val: any }>;
 }
 
 type Body = Array<

@@ -36,3 +36,27 @@ const goo = () => {
 };
 
 doo(130);
+//-------------------------
+
+const x = 1;
+let y = 2;
+var z = 3;
+
+function foo(alpha) {
+  const a = 10;
+  let b = 20;
+  var c = 30;
+
+  function boo() {
+    var d = 40;
+    const e = 50;
+    console.log();
+  }
+
+  boo();
+}
+
+foo(111);
+
+let f = 70;
+const g = 80;
